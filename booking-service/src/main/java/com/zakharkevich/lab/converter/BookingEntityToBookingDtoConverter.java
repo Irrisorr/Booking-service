@@ -13,7 +13,10 @@ public class BookingEntityToBookingDtoConverter implements Converter<Booking, Bo
         BookingDto bookingDto = new BookingDto();
         bookingDto.setId(source.getId());
         bookingDto.setUserId(source.getUserId());
+        bookingDto.setProviderId(source.getProviderId());
+        bookingDto.setServiceId(source.getServiceId());
         bookingDto.setVisitTime(source.getVisitTime());
+        bookingDto.setStatus(source.getStatus());
         return bookingDto;
     }
 }

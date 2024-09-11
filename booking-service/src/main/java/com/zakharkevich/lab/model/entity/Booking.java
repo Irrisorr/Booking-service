@@ -21,4 +21,8 @@ public class Booking {
     private Long serviceId;
 
     private LocalDateTime visitTime;
+
+    @Enumerated(EnumType.STRING)
+    private BookingStatus status;
 }
+

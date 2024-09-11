@@ -1,14 +1,15 @@
 package com.zakharkevich.lab.service;
 
 import com.zakharkevich.lab.client.ProviderClient;
+import com.zakharkevich.lab.model.dto.NotificationDto;
 import com.zakharkevich.lab.model.dto.ProviderDto;
 import com.zakharkevich.lab.model.dto.ServiceDto;
 import com.zakharkevich.lab.model.entity.Booking;
+import com.zakharkevich.lab.model.entity.BookingStatus;
 import com.zakharkevich.lab.repository.BookingRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Component;
-import org.springframework.web.server.ResponseStatusException;
+import org.springframework.jms.core.JmsTemplate;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -16,14 +17,14 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
-@Component
+@Service
 @RequiredArgsConstructor
 public class BookingService {
 
     private final BookingRepository bookingRepository;
     private final ProviderClient providerClient;
+    private final JmsTemplate jmsTemplate;
 
     public List<Booking> getAllBookings() {
         return bookingRepository.findAll();
@@ -34,24 +35,46 @@ public class BookingService {
     }
 
     public Booking createBooking(Booking booking) {
-        if (!isSlotAvailable(booking.getProviderId(), booking.getServiceId(), booking.getVisitTime())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Slot is not available");
+
+        LocalDate bookingDate = booking.getVisitTime().toLocalDate();
+        List<String> availableSlots = getAvailableSlots(booking.getProviderId(), booking.getServiceId(), bookingDate);
+
+        if (!availableSlots.contains(booking.getVisitTime().toLocalTime().toString())) {
+            throw new RuntimeException("This slot is not available. Available slots: " + availableSlots);
         }
-        return bookingRepository.save(booking);
+
+        booking.setStatus(BookingStatus.PENDING);
+        Booking savedBooking = bookingRepository.save(booking);
+
+        NotificationDto notification = new NotificationDto(savedBooking.getId(), savedBooking.getStatus());
+        jmsTemplate.convertAndSend("bookingNotifications", notification);
+
+        return savedBooking;
+    }
+
+    public Booking updateBookingStatus(Long id, BookingStatus status) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
+
+        booking.setStatus(status);
+        Booking updatedBooking = bookingRepository.save(booking);
+
+        NotificationDto notification = new NotificationDto(updatedBooking.getId(), updatedBooking.getStatus());
+        jmsTemplate.convertAndSend("bookingNotifications", notification);
+
+        return updatedBooking;
     }
 
     public Booking updateBooking(Long id, Booking bookingDetails) {
         Booking booking = bookingRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
-
-        if (!isSlotAvailable(bookingDetails.getProviderId(), bookingDetails.getServiceId(), bookingDetails.getVisitTime())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Slot is not available");
-        }
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
 
         booking.setUserId(bookingDetails.getUserId());
         booking.setProviderId(bookingDetails.getProviderId());
         booking.setServiceId(bookingDetails.getServiceId());
         booking.setVisitTime(bookingDetails.getVisitTime());
+        booking.setStatus(bookingDetails.getStatus());
+        booking.setStatus(bookingDetails.getStatus());
 
         return bookingRepository.save(booking);
     }
@@ -62,50 +85,31 @@ public class BookingService {
 
     public List<String> getAvailableSlots(Long providerId, Long serviceId, LocalDate date) {
         ProviderDto provider = providerClient.getProviderById(providerId);
-        ServiceDto service = providerClient.getServiceById(providerId, serviceId);
+        ServiceDto service = provider.getServices().stream()
+                .filter(s -> s.getId().equals(serviceId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Service not found"));
 
-        LocalTime workingHoursStart = provider.getContactInfo().getWorkingHoursStart();
-        LocalTime workingHoursEnd = provider.getContactInfo().getWorkingHoursEnd();
-        Integer duration = service.getDuration();
+        LocalTime startTime = provider.getContactInfo().getWorkingHoursStart();
+        LocalTime endTime = provider.getContactInfo().getWorkingHoursEnd();
 
-        List<LocalDateTime> availableSlots = new ArrayList<>();
-        LocalDateTime startTime = LocalDateTime.of(date, workingHoursStart);
-        LocalDateTime endTime = LocalDateTime.of(date, workingHoursEnd);
+        List<String> availableSlots = new ArrayList<>();
+        LocalDateTime currentSlot = LocalDateTime.of(date, startTime);
 
-        while (startTime.isBefore(endTime)) {
-            availableSlots.add(startTime);
-            startTime = startTime.plusMinutes(duration);
+        while (currentSlot.plusMinutes(service.getDuration()).toLocalTime().isBefore(endTime) ||
+                currentSlot.plusMinutes(service.getDuration()).toLocalTime().equals(endTime)) {
+            if (isSlotAvailable(providerId, serviceId, currentSlot)) {
+                availableSlots.add(currentSlot.toLocalTime().toString());
+            }
+            currentSlot = currentSlot.plusMinutes(service.getDuration());
         }
 
-        List<Booking> bookings = bookingRepository.findByProviderIdAndServiceIdAndVisitTimeBetween(
-                providerId, serviceId, LocalDateTime.of(date, LocalTime.MIN), LocalDateTime.of(date, LocalTime.MAX));
-
-        for (Booking booking : bookings) {
-            availableSlots.remove(booking.getVisitTime());
-        }
-
-        return availableSlots.stream()
-                .map(LocalDateTime::toString)
-                .collect(Collectors.toList());
+        return availableSlots;
     }
 
-    public boolean isSlotAvailable(Long providerId, Long serviceId, LocalDateTime visitTime) {
-        ProviderDto provider = providerClient.getProviderById(providerId);
-        ServiceDto service = providerClient.getServiceById(providerId, serviceId);
-
-        LocalTime workingHoursStart = provider.getContactInfo().getWorkingHoursStart();
-        LocalTime workingHoursEnd = provider.getContactInfo().getWorkingHoursEnd();
-        Integer duration = service.getDuration();
-
-        if (visitTime.toLocalTime().isBefore(workingHoursStart) || visitTime.toLocalTime().plusMinutes(duration).isAfter(workingHoursEnd)) {
-            return false;
-        }
-
-        if (visitTime.toLocalTime().getMinute() % duration != 0) {
-            return false;
-        }
-
-        List<Booking> bookings = bookingRepository.findByProviderIdAndServiceIdAndVisitTime(providerId, serviceId, visitTime);
-        return bookings.isEmpty();
+    private boolean isSlotAvailable(Long providerId, Long serviceId, LocalDateTime dateTime) {
+        List<Booking> conflictingBookings = bookingRepository.findByProviderIdAndServiceIdAndVisitTime(
+                providerId, serviceId, dateTime);
+        return conflictingBookings.isEmpty();
     }
 }

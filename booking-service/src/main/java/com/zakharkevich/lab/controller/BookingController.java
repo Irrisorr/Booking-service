@@ -2,6 +2,7 @@ package com.zakharkevich.lab.controller;
 
 import com.zakharkevich.lab.model.dto.BookingDto;
 import com.zakharkevich.lab.model.entity.Booking;
+import com.zakharkevich.lab.model.entity.BookingStatus;
 import com.zakharkevich.lab.service.BookingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.convert.ConversionService;
@@ -53,6 +54,20 @@ public class BookingController {
     public BookingDto updateBooking(@PathVariable Long id, @RequestBody BookingDto bookingDto) {
         Booking booking = conversionService.convert(bookingDto, Booking.class);
         Booking updatedBooking = bookingService.updateBooking(id, booking);
+        return conversionService.convert(updatedBooking, BookingDto.class);
+    }
+
+    @PutMapping("/{id}/approve")
+    @PreAuthorize("hasAuthority('provider.write')")
+    public BookingDto approveBooking(@PathVariable Long id) {
+        Booking updatedBooking = bookingService.updateBookingStatus(id, BookingStatus.APPROVED);
+        return conversionService.convert(updatedBooking, BookingDto.class);
+    }
+
+    @PutMapping("/{id}/reject")
+    @PreAuthorize("hasAuthority('provider.write')")
+    public BookingDto rejectBooking(@PathVariable Long id) {
+        Booking updatedBooking = bookingService.updateBookingStatus(id, BookingStatus.REJECTED);
         return conversionService.convert(updatedBooking, BookingDto.class);
     }
 

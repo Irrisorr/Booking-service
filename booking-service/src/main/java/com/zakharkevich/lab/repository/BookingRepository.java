@@ -9,7 +9,6 @@ import java.util.List;
 
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
-    List<Booking> findByProviderIdAndServiceIdAndVisitTimeBetween(Long providerId, Long serviceId, LocalDateTime start, LocalDateTime end);
+    List<Booking> findByProviderIdAndServiceIdAndVisitTime(Long providerId, Long serviceId, LocalDateTime start);
 
-    List<Booking> findByProviderIdAndServiceIdAndVisitTime(Long providerId, Long serviceId, LocalDateTime visitTime);
 }
