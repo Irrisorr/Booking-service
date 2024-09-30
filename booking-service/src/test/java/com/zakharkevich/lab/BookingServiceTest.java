@@ -46,7 +46,7 @@ class BookingServiceTest {
     }
 
     @Test
-    void getAllBookings() {
+    void shouldReturnAllBookings() {
         Booking booking1 = new Booking();
         booking1.setId(1L);
         Booking booking2 = new Booking();
@@ -62,7 +62,7 @@ class BookingServiceTest {
     }
 
     @Test
-    void getBookingById() {
+    void shouldReturnBookingById() {
         Booking booking = new Booking();
         booking.setId(1L);
 
@@ -76,7 +76,7 @@ class BookingServiceTest {
     }
 
     @Test
-    void createBooking() {
+    void shouldCreateBookingAndSendNotification() {
         Booking booking = new Booking();
         booking.setProviderId(1L);
         booking.setServiceId(1L);
@@ -105,7 +105,32 @@ class BookingServiceTest {
     }
 
     @Test
-    void updateBookingStatus() {
+    void shouldThrowExceptionWhenSlotIsNotAvailable() {
+        Booking booking = new Booking();
+        booking.setProviderId(1L);
+        booking.setServiceId(1L);
+        booking.setVisitTime(LocalDateTime.of(2023, 1, 1, 10, 0));
+
+        ProviderDto providerDto = new ProviderDto();
+        ContactInfoDto contactInfoDto = new ContactInfoDto();
+        contactInfoDto.setWorkingHoursStart(LocalTime.of(9, 0));
+        contactInfoDto.setWorkingHoursEnd(LocalTime.of(18, 0));
+        providerDto.setContactInfo(contactInfoDto);
+        ServiceDto serviceDto = new ServiceDto();
+        serviceDto.setId(1L);
+        serviceDto.setDuration(60);
+        providerDto.setServices(List.of(serviceDto));
+
+        when(providerClient.getProviderById(1L)).thenReturn(providerDto);
+        when(bookingRepository.findByProviderIdAndServiceIdAndVisitTime(anyLong(), anyLong(), any())).thenReturn(List.of(booking));
+
+        assertThrows(RuntimeException.class, () -> bookingService.createBooking(booking));
+        verify(bookingRepository, never()).save(booking);
+        verify(jmsTemplate, never()).convertAndSend(anyString(), any(NotificationDto.class));
+    }
+
+    @Test
+    void shouldSendNotificationWhenBookingApproved() {
         Booking booking = new Booking();
         booking.setId(1L);
         booking.setStatus(BookingStatus.PENDING);
@@ -122,7 +147,7 @@ class BookingServiceTest {
     }
 
     @Test
-    void getAvailableSlots() {
+    void shouldReturnAvailableSlots() {
         Long providerId = 1L;
         Long serviceId = 1L;
         LocalDate date = LocalDate.of(2023, 1, 1);
