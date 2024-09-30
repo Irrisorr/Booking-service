@@ -5,7 +5,7 @@ import com.zakharkevich.lab.model.dto.NotificationDto;
 import com.zakharkevich.lab.model.dto.ProviderDto;
 import com.zakharkevich.lab.model.dto.ServiceDto;
 import com.zakharkevich.lab.model.entity.Booking;
-import com.zakharkevich.lab.model.entity.BookingStatus;
+import com.zakharkevich.lab.model.enums.BookingStatus;
 import com.zakharkevich.lab.repository.BookingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jms.core.JmsTemplate;

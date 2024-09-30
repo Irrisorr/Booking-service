@@ -1,5 +1,6 @@
 package com.zakharkevich.lab.model.entity;
 
+import com.zakharkevich.lab.model.enums.BookingStatus;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;

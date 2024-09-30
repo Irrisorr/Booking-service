@@ -1,6 +1,6 @@
 package com.zakharkevich.lab.model.dto;
 
-import com.zakharkevich.lab.model.entity.BookingStatus;
+import com.zakharkevich.lab.model.enums.BookingStatus;
 import lombok.Data;
 
 import java.time.LocalDateTime;
